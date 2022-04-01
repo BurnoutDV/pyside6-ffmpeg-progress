@@ -85,7 +85,15 @@ def extract_probe(ffmpeg_probe: dict) -> dict:
     for stream in ffmpeg_probe['streams']:
         if stream['codec_type'] == "video":
             raw_fps = int(stream['r_frame_rate'].split("/")[0])
-            raw_delta = str_to_timedelta(stream['tags']['DURATION'])
+            # tags can actually have a language assigned to them..hrrr
+            dur_tag = None
+            for key in stream['tags']:
+                if key[0:8] == "DURATION":
+                    dur_tag = key
+                    break
+            else:
+                return {}
+            raw_delta = str_to_timedelta(stream['tags'][dur_tag])
             raw_frames = round(raw_delta.seconds*raw_fps + (raw_delta.microseconds/100)*raw_fps)
             return {
                 "time_length": raw_delta,

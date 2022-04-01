@@ -90,6 +90,8 @@ class ProgressWindow(QMainWindow):
             self.proc.readyReadStandardOutput.connect(self.stdout_process)
             self.proc.start("ffmpeg", ["-y", "-i", self.file_path, "-c:v", "libx264", "-crf", "22.5", "output.mkv"])
             self.btn_quit.setDisabled(True)
+            self.btn_start.setDisabled(True)
+            self.status_bar.setValue(0)
 
     def stderr_out_process(self):
         data = self.proc.readAllStandardError()
@@ -99,7 +101,7 @@ class ProgressWindow(QMainWindow):
                 fps_delta = self.file_info['est_frames'] - status['frames']
                 self.status_time.setText(f"{format_timedelta(status['elapsed'])} / {format_timedelta(self.file_info['time_length'])}")
                 self.frames.setText(f"{status['frames']} / {self.file_info['est_frames']}")
-                self.filesize.setText(f"{sizeof_fmt(status['file_size']*1024)}")  # TODO: math for file size that might be
+                self.filesize.setText(f"{sizeof_fmt(status['file_size']*1024)} / ?")  # TODO: math for file size that might be
                 self.process_rate.setText(f"{status['fps']}fps ({status['enc_rate']}{status['enc_unit']})")
                 self.time_elapsed.setText(f"{format_timedelta(datetime.now()-self.file_info['start_time'])}")
                 self.time_estimated.setText(format_timedelta(timedelta(seconds=fps_delta/status['fps'])))
@@ -122,7 +124,6 @@ class ProgressWindow(QMainWindow):
         self.status_bar.setValue(1000)
         # reset interface
         self.file_path = None
-        self.btn_start.setDisabled(True)
         self.btn_quit.setDisabled(False)
         self.message.setText(i18n['drop_hint'])
 
