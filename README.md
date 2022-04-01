@@ -21,3 +21,9 @@ For its simple design this leverages quite some heavy libraries, namely `PySide6
 
 
 TODO: write more text here Alan
+
+
+
+shamelessly stolen design:
+
+![progress](./README/progress.png)
