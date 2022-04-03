@@ -25,13 +25,14 @@ from datetime import datetime
 
 from PySide6.QtWidgets import *
 from PySide6 import QtCore
-from toolbox import *
+from ffmpeg_progress.toolbox import *
 
 logger = logging.getLogger(__name__)
 
 i18n = {
     'drop_hint': "Drop any video file"
 }
+
 
 class ProgressWindow(QMainWindow):
     def __init__(self, parent=None):
@@ -42,7 +43,7 @@ class ProgressWindow(QMainWindow):
         self.file_info = None
         self.file_path = None
         # Window setup
-        self.setWindowTitle("ProgressBar?")
+        self.setWindowTitle("Progressbar from ffmpeg")
         self.setMinimumSize(400, 240)
         self.setWindowFlags(QtCore.Qt.WindowMinimizeButtonHint & QtCore.Qt.WindowMaximizeButtonHint)
         self.setAcceptDrops(True)
@@ -66,8 +67,10 @@ class ProgressWindow(QMainWindow):
         lay_dia.addRow(self.message)
         lay_2 = QHBoxLayout()
         self.btn_quit = QPushButton("Quit")
+        self.btn_abort = QPushButton("Abort", Disabled=True)
         self.btn_start = QPushButton("Start", Disabled=True)
         lay_2.addWidget(self.btn_start)
+        lay_2.addWidget(self.btn_abort)
         lay_2.addWidget(self.btn_quit)
         lay_1 = QVBoxLayout()
         lay_1.addLayout(lay_dia)
@@ -79,9 +82,10 @@ class ProgressWindow(QMainWindow):
 
         self.btn_quit.clicked.connect(self.close)
         self.btn_start.clicked.connect(self.start_process)
+        self.btn_abort.clicked.connect(self.abort_process)
 
     def start_process(self):
-        if self.proc is None:
+        if self.proc is None and self.file_path is not None:
             self.file_info = extract_probe(ffmpeg.probe(self.file_path))
             self.file_info['start_time'] = datetime.now()
             self.proc = QtCore.QProcess()
@@ -89,22 +93,36 @@ class ProgressWindow(QMainWindow):
             self.proc.readyReadStandardError.connect(self.stderr_out_process)
             self.proc.readyReadStandardOutput.connect(self.stdout_process)
             self.proc.start("ffmpeg", ["-y", "-i", self.file_path, "-c:v", "libx264", "-crf", "22.5", "output.mkv"])
-            self.btn_quit.setDisabled(True)
+            # self.btn_quit.setDisabled(True)
             self.btn_start.setDisabled(True)
+            self.btn_abort.setDisabled(False)
             self.status_bar.setValue(0)
+            
+    def abort_process(self):
+        if self.proc:
+            self.proc.terminate()
+            # all the other stuff should be handled by the signals
 
     def stderr_out_process(self):
         data = self.proc.readAllStandardError()
         stderr = bytes(data).decode("utf8")
         if stderr[0:5] == "frame":
             if status := regex_ffmpeg_encoding(stderr):
+                # averaging fps
+                if 'avg_fps' in self.file_info:
+                    self.file_info['avg_enc'] = (self.file_info['avg_enc']+status['fps'])/2
+                else:
+                    self.file_info['avg_enc'] = status['fps']
                 fps_delta = self.file_info['est_frames'] - status['frames']
-                self.status_time.setText(f"{format_timedelta(status['elapsed'])} / {format_timedelta(self.file_info['time_length'])}")
+                est_size = ((status['file_size']*1024)/status['elapsed'].seconds) * \
+                            self.file_info['time_length'].seconds
+                self.status_time.setText(f"{format_timedelta(status['elapsed'])} / "
+                                         f"{format_timedelta(self.file_info['time_length'])}")
                 self.frames.setText(f"{status['frames']} / {self.file_info['est_frames']}")
-                self.filesize.setText(f"{sizeof_fmt(status['file_size']*1024)} / ?")  # TODO: math for file size that might be
+                self.filesize.setText(f"{sizeof_fmt(status['file_size']*1024)} / {sizeof_fmt(est_size)}")
                 self.process_rate.setText(f"{status['fps']}fps ({status['enc_rate']}{status['enc_unit']})")
                 self.time_elapsed.setText(f"{format_timedelta(datetime.now()-self.file_info['start_time'])}")
-                self.time_estimated.setText(format_timedelta(timedelta(seconds=fps_delta/status['fps'])))
+                self.time_estimated.setText(format_timedelta(timedelta(seconds=fps_delta/self.file_info['avg_enc']))+f" {self.file_info['avg_enc']}")
                 self.status_bar.setValue(round(status['frames']/self.file_info['est_frames']*1000))
 
     def stdout_process(self):
@@ -114,6 +132,7 @@ class ProgressWindow(QMainWindow):
         print(stdout)
 
     def regular_end_process(self):
+        # TODO: handle force close, other cases like crashs
         self.proc = None
         # i am cheating here and just set everything to 100% without actually having anything
         self.status_time.setText(f"{format_timedelta(self.file_info['time_length'])} / {format_timedelta(self.file_info['time_length'])}")
@@ -124,8 +143,15 @@ class ProgressWindow(QMainWindow):
         self.status_bar.setValue(1000)
         # reset interface
         self.file_path = None
-        self.btn_quit.setDisabled(False)
+        # self.btn_quit.setDisabled(False)
+        self.btn_start.setDisabled(True)
+        self.btn_abort.setDisabled(True)
         self.message.setText(i18n['drop_hint'])
+
+    def close(self):
+        if self.proc:
+            self.proc.terminate()  # SIGTERM, .kill would be SIGKILL
+        super().close()
 
     def dragEnterEvent(self, e):
         if e.mimeData().hasUrls():
@@ -138,3 +164,4 @@ class ProgressWindow(QMainWindow):
                 self.message.setText(file_name)
                 self.file_path = file_name
                 self.btn_start.setDisabled(False)
+

@@ -19,11 +19,13 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 # @license GPL-3.0-only <https://www.gnu.org/licenses/gpl-3.0.en.html>
+
 import logging
 import re
 from datetime import timedelta
 
 logger = logging.getLogger(__name__)
+
 
 def str_to_timedelta(delta_str: str) -> timedelta:
     """
